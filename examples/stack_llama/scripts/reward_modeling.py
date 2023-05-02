@@ -11,6 +11,8 @@ from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
+    LlamaForCausalLM, 
+    LlamaTokenizer,
     HfArgumentParser,
     PreTrainedTokenizerBase,
     Trainer,
@@ -128,8 +130,8 @@ training_args = TrainingArguments(
     optim=script_args.optim,
     lr_scheduler_type=script_args.lr_scheduler_type,
 )
-# Load the value-head model and tokenizer.
-tokenizer = AutoTokenizer.from_pretrained(script_args.model_name, use_auth_token=True)
+# Load the value-head model and tokenizer. ## CHANGED TO LlamaTokenizer FROM AutoTokenizer
+tokenizer = LlamaTokenizer.from_pretrained(script_args.model_name, use_auth_token=True)
 config = AutoConfig.from_pretrained(script_args.model_name)
 
 if "llama" in script_args.model_name:
@@ -154,9 +156,11 @@ peft_config = LoraConfig(
     lora_dropout=0.1,
 )
 
-# Added "load_in_8bit=True, might not work, but we'll probably need it"
-model = AutoModelForSequenceClassification.from_pretrained(
-    script_args.model_name, num_labels=1, torch_dtype=torch.bfloat16, load_in_8bit=True
+## Added "load_in_8bit=True, might not work, but we'll probably need it. CHANGED TO LlamaForCausalLM FROM AutoModelForSequenceClassification
+## And set torch_dtype=torch.float16 INSTEAD OF bfloat16. CHANGE THIS BACK IF USING A100 (I THINK)
+## And set device_map="auto" SINCE IT IS NEEDED FOR 8BIT LOADING
+model = LlamaForCausalLM.from_pretrained(
+    script_args.model_name, num_labels=1, device_map="auto", torch_dtype=torch.float16, load_in_8bit=True
 )
 model = get_peft_model(model, peft_config)
 model = PeftModel.from_pretrained(model, "samhog/psychology-alpaca")    # Loading psychology-alpaca in the same way as the generator script on colab
@@ -288,3 +292,4 @@ trainer.train(script_args.resume_from_checkpoint)
 
 print("Saving last checkpoint of the model")
 model.save_pretrained(output_name + "_peft_last_checkpoint")
+model.push_to_hub("samhog/psychology-alpaca-rm", use_auth_token=True)
