@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from datasets import load_dataset
-from peft import LoraConfig, TaskType, get_peft_model
+from peft import LoraConfig, TaskType, get_peft_model, PeftModel
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -49,7 +49,7 @@ class ScriptArguments:
     learning_rate: Optional[float] = field(default=2e-5)
     weight_decay: Optional[int] = field(default=0.001)
     model_name: Optional[str] = field(
-        default="gpt2",
+        default="decapoda-research/llama-7b-hf",        ### Changed to Llama-7b-hf, the model which we want to use as base model.
         metadata={
             "help": "The model that you want to train from the Hugging Face hub. E.g. gpt2, gpt2-xl, bert, etc."
         },
@@ -90,18 +90,20 @@ parser = HfArgumentParser(ScriptArguments)
 script_args = parser.parse_args_into_dataclasses()[0]
 
 # Load the human stack-exchange-paired dataset for tuning the reward model.
-train_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/reward", split="train")
+train_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/reward", split="train")
 if script_args.train_subset > 0:
     train_dataset = train_dataset.select(range(script_args.train_subset))
-eval_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/evaluation", split="train")
+eval_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/evaluation", split="train")
 if script_args.eval_subset > 0:
     eval_dataset = eval_dataset.select(range(script_args.eval_subset))
 # Define the training args. Needs to be done before the model is loaded if you are using deepspeed.
+"""
 model_name_split = script_args.model_name.split("/")[-1]
 output_name = (
     f"{model_name_split}_peft_stack-exchange-paired_rmts__{script_args.train_subset}_{script_args.learning_rate}"
 )
-
+"""
+output_name = "lora-alpaca" # Just the same as the fine-tuning implementation (https://colab.research.google.com/drive/11m4444w5KOtio3x-atLevdNDGdfFlwoj#scrollTo=JCB9UzMVwsSM)
 training_args = TrainingArguments(
     output_dir=output_name,
     learning_rate=script_args.learning_rate,
@@ -151,10 +153,12 @@ peft_config = LoraConfig(
     lora_dropout=0.1,
 )
 
+# Added "load_in_8bit=True, might not work, but we'll probably need it"
 model = AutoModelForSequenceClassification.from_pretrained(
-    script_args.model_name, num_labels=1, torch_dtype=torch.bfloat16
+    script_args.model_name, num_labels=1, torch_dtype=torch.bfloat16, load_in_8bit=True
 )
 model = get_peft_model(model, peft_config)
+model = PeftModel.from_pretrained(model, "samhog/psychology-alpaca")    # Loading psychology-alpaca in the same way as the generator script on colab
 model.print_trainable_parameters()
 
 # Need to do this for gpt2, because it doesn't have an official pad token.
