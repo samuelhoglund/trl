@@ -120,7 +120,7 @@ output_name = (
     f"{model_name_split}_peft_stack-exchange-paired_rmts__{script_args.train_subset}_{script_args.learning_rate}"
 )
 """
-output_name = "lora-alpaca" # Just the same as the fine-tuning implementation (https://colab.research.google.com/drive/11m4444w5KOtio3x-atLevdNDGdfFlwoj#scrollTo=JCB9UzMVwsSM)
+output_name = "psychology-alpaca-rm" # Just the same as the fine-tuning implementation (https://colab.research.google.com/drive/11m4444w5KOtio3x-atLevdNDGdfFlwoj#scrollTo=JCB9UzMVwsSM)
 training_args = TrainingArguments(
     output_dir=output_name,
     learning_rate=script_args.learning_rate,
@@ -178,7 +178,7 @@ model = LlamaForCausalLM.from_pretrained(
     script_args.model_name, num_labels=1, device_map="auto", torch_dtype=torch.float16, load_in_8bit=True
 )
 model = get_peft_model(model, peft_config)
-model = PeftModel.from_pretrained(model, "samhog/psychology-alpaca")    # Loading psychology-alpaca in the same way as the generator script on colab
+#model = PeftModel.from_pretrained(model, "samhog/psychology-alpaca")    # Loading psychology-alpaca in the same way as the generator script on colab
 model.print_trainable_parameters()
 
 # Need to do this for gpt2, because it doesn't have an official pad token.
