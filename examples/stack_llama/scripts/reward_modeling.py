@@ -66,12 +66,14 @@ class ScriptArguments:
         default=1,
         metadata={"help": "The number of training epochs for the reward model."},
     )
+    ## NOTE: CHANGE DEFAULT BACK TO 100 000 WHEN DONE TESTING
     train_subset: Optional[int] = field(
-        default=100000,
+        default=1000,
         metadata={"help": "The size of the subset of the training data to use"},
     )
+    ## NOTE: CHANGE DEFAULT BACK TO 50 000 WHEN DONE TESTING
     eval_subset: Optional[int] = field(
-        default=50000,
+        default=500,
         metadata={"help": "The size of the subset of the eval data to use"},
     )
     gradient_checkpointing: Optional[bool] = field(
@@ -92,12 +94,25 @@ parser = HfArgumentParser(ScriptArguments)
 script_args = parser.parse_args_into_dataclasses()[0]
 
 # Load the human stack-exchange-paired dataset for tuning the reward model.
-train_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/reward", split="train")
+#train_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/reward", split="train[:0.1%]")
+train_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/reward", split="train[:10%]")
 if script_args.train_subset > 0:
     train_dataset = train_dataset.select(range(script_args.train_subset))
-eval_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/evaluation", split="train")
+#eval_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/evaluation", split="train[:0.1%]")
+eval_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/evaluation", split="train[:10%]")
 if script_args.eval_subset > 0:
     eval_dataset = eval_dataset.select(range(script_args.eval_subset))
+
+"""
+## Using only a small sample of the total dataset in samhog/stack-exchange-mini
+percentage = 0.01
+num_examples = int(len(train_dataset) * percentage)
+train_dataset = train_dataset.select(range(num_examples))
+"""
+print(train_dataset)
+print("Dataset cropping done")
+
+
 # Define the training args. Needs to be done before the model is loaded if you are using deepspeed.
 """
 model_name_split = script_args.model_name.split("/")[-1]
