@@ -98,7 +98,7 @@ script_args = parser.parse_args_into_dataclasses()[0]
 train_dataset = load_dataset("samhog/cgpt-parquet", data_dir="data/reward", split="train")
 if script_args.train_subset > 0:
     train_dataset = train_dataset.select(range(script_args.train_subset))
-eval_dataset = load_dataset("samhog/cgpq-parquet", data_dir="data/evaluation", split="train")
+eval_dataset = load_dataset("samhog/cgpt-parquet", data_dir="data/evaluation", split="train")
 #eval_dataset = load_dataset("samhog/stack-exchange-mini", data_dir="data/evaluation", split="train[:1%]")
 if script_args.eval_subset > 0:
     eval_dataset = eval_dataset.select(range(script_args.eval_subset))
