@@ -6,10 +6,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from datasets import load_dataset
-from peft import LoraConfig, TaskType, get_peft_model, PeftModel
+from peft import LoraConfig, TaskType, get_peft_model, PeftModel, prepare_model_for_int8_training
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
+    LlamaForSequenceClassification,
     AutoTokenizer,
     LlamaForCausalLM, 
     LlamaTokenizer,
@@ -174,9 +175,11 @@ peft_config = LoraConfig(
 ## Added "load_in_8bit=True, might not work, but we'll probably need it. CHANGED TO LlamaForCausalLM FROM AutoModelForSequenceClassification
 ## And set torch_dtype=torch.float16 INSTEAD OF bfloat16. CHANGE THIS BACK IF USING A100 (I THINK)
 ## And set device_map="auto" SINCE IT IS NEEDED FOR 8BIT LOADING
-model = LlamaForCausalLM.from_pretrained(
+#model = LlamaForCausalLM.from_pretrained(
+model = LlamaForSequenceClassification.from_pretrained(
     script_args.model_name, num_labels=1, device_map="auto", torch_dtype=torch.float16, load_in_8bit=True
 )
+model = prepare_model_for_int8_training(model)
 model = get_peft_model(model, peft_config)
 #model = PeftModel.from_pretrained(model, "samhog/psychology-alpaca")    # Loading psychology-alpaca in the same way as the generator script on colab
 model.print_trainable_parameters()
