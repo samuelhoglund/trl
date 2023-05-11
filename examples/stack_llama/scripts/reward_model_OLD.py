@@ -1,8 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
-import os
-
 import evaluate
 import numpy as np
 import torch
@@ -16,7 +14,6 @@ from transformers import (
     AutoTokenizer,
     LlamaForCausalLM, 
     LlamaTokenizer,
-    LlamaConfig,
     HfArgumentParser,
     PreTrainedTokenizerBase,
     Trainer,
@@ -133,9 +130,9 @@ training_args = TrainingArguments(
     num_train_epochs=script_args.num_train_epochs,
     weight_decay=script_args.weight_decay,
     evaluation_strategy="steps",
-    eval_steps=200, #500,
+    eval_steps=500,
     save_strategy="steps",
-    save_steps=200, #500,
+    save_steps=500,
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
     gradient_checkpointing=script_args.gradient_checkpointing,
     deepspeed=script_args.deepspeed,
@@ -143,15 +140,15 @@ training_args = TrainingArguments(
     remove_unused_columns=False,
     label_names=[],
     #bf16=script_args.bf16,
-    #fp16=True,
+    fp16=True,
     logging_strategy="steps",
     logging_steps=10,
     optim=script_args.optim,
     lr_scheduler_type=script_args.lr_scheduler_type,
 )
-# Load the value-head model and tokenizer. ## CHANGED TO LlamaTokenizer FROM AutoTokenizer ## ADDED TRUST_REMOTE_CODE=True!!
-tokenizer = LlamaTokenizer.from_pretrained(script_args.model_name, trust_remote_code=True)
-config = LlamaConfig.from_pretrained(script_args.model_name)
+# Load the value-head model and tokenizer. ## CHANGED TO LlamaTokenizer FROM AutoTokenizer
+tokenizer = LlamaTokenizer.from_pretrained(script_args.model_name, use_auth_token=True)
+config = AutoConfig.from_pretrained(script_args.model_name)
 
 if "llama" in script_args.model_name:
     # required for llama
@@ -167,20 +164,12 @@ else:
     # required for gpt2
     tokenizer.pad_token = tokenizer.eos_token
 
-device_map = "auto"
-world_size = int(os.environ.get("WORLD_SIZE", 1))   ## Needed. What does it do?
-ddp = world_size != 1
-if ddp:
-    device_map = {"": int(os.environ.get("LOCAL_RANK") or 0)}
-print("device_map: ", device_map)
-
 peft_config = LoraConfig(
     task_type=TaskType.SEQ_CLS,
     inference_mode=False,
     r=8,
-    lora_alpha=16, #32,
-    lora_dropout=0.05, #0.1,
-    bias="none",        ## Added this
+    lora_alpha=32,
+    lora_dropout=0.1,
 )
 
 ## Added "load_in_8bit=True, might not work, but we'll probably need it. CHANGED TO LlamaForCausalLM FROM AutoModelForSequenceClassification
@@ -188,12 +177,7 @@ peft_config = LoraConfig(
 ## And set device_map="auto" SINCE IT IS NEEDED FOR 8BIT LOADING
 #model = LlamaForCausalLM.from_pretrained(
 model = LlamaForSequenceClassification.from_pretrained(
-    script_args.model_name, 
-    num_labels=1, 
-    device_map=device_map, 
-    torch_dtype=torch.float16, 
-    load_in_8bit=True,
-    trust_remote_code=True,
+    script_args.model_name, num_labels=1, device_map="auto", torch_dtype=torch.float16, load_in_8bit=True
 )
 model = prepare_model_for_int8_training(model)
 model = get_peft_model(model, peft_config)
@@ -233,10 +217,10 @@ def preprocess_function(examples):
 train_dataset = train_dataset.map(
     preprocess_function, batched=True, num_proc=num_proc, remove_columns=original_columns
 )
-train_dataset = train_dataset.filter(lambda x: len(x["input_ids_j"]) <= 1024 and len(x["input_ids_k"]) <= 1024)
+train_dataset = train_dataset.filter(lambda x: len(x["input_ids_j"]) <= 512 and len(x["input_ids_k"]) <= 512)
 
 eval_dataset = eval_dataset.map(preprocess_function, batched=True, num_proc=num_proc, remove_columns=original_columns)
-eval_dataset = eval_dataset.filter(lambda x: len(x["input_ids_j"]) <= 1024 and len(x["input_ids_k"]) <= 1024)
+eval_dataset = eval_dataset.filter(lambda x: len(x["input_ids_j"]) <= 512 and len(x["input_ids_k"]) <= 512)
 
 
 # We need to define a special data collator that batches the data in our j vs k format.
@@ -319,12 +303,11 @@ trainer = RewardTrainer(
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,
     compute_metrics=compute_metrics,
-    data_collator=RewardDataCollatorWithPadding(tokenizer=tokenizer, max_length=512, pad_to_miltiple_of=8),
+    data_collator=RewardDataCollatorWithPadding(tokenizer=tokenizer, max_length=512),
 )
 
-model.config.use_cache = False
 trainer.train(script_args.resume_from_checkpoint)
 
-print("Pushing to hub...")
-#model.save_pretrained(output_name + "_peft_last_checkpoint")
+print("Saving last checkpoint of the model")
+model.save_pretrained(output_name + "_peft_last_checkpoint")
 model.push_to_hub("samhog/psychology-alpaca-rm", use_auth_token=True)
